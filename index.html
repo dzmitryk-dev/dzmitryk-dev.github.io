@@ -1,7 +1,174 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hello World! — Canvas Animation</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: #0b0e14;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    .hud {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      color: rgba(255,255,255,.7);
+      font-size: 12px;
+      user-select: none;
+      pointer-events: none;
+      letter-spacing: .2px;
+    }
+  </style>
+</head>
 <body>
-<h1>Hello World</h1>
-<p>I'm hosted with GitHub Pages.</p>
+  <canvas id="c" aria-label="Hello World canvas animation"></canvas>
+  <div class="hud">Click or tap to change direction · Press Space to pause/resume</div>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById('c');
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      let width = 0, height = 0;
+      let text = 'Hello World!';
+      let fontSize = 72;
+      let metrics, halfW = 0, halfH = 0, radius = 0;
+
+      let x = 0, y = 0, vx = 0, vy = 0; // position & velocity (px/s)
+      let angle = 0, omega = 0.9;       // rotation (rad) & angular speed (rad/s)
+      const baseSpeed = 220;            // flight speed in px/s
+
+      let paused = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let last = performance.now();
+
+      function updateFont() {
+        fontSize = Math.max(40, Math.min(160, Math.round(width / 10)));
+        ctx.font = `700 ${fontSize}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        metrics = ctx.measureText(text);
+        halfW = metrics.width / 2;
+        halfH = fontSize / 2;
+        // bounding circle for rotated text (so we can bounce cleanly)
+        radius = Math.hypot(halfW, halfH);
+      }
+
+      function resize() {
+        const ratio = window.devicePixelRatio || 1;
+        width = Math.max(1, window.innerWidth);
+        height = Math.max(1, window.innerHeight);
+        canvas.width = Math.floor(width * ratio);
+        canvas.height = Math.floor(height * ratio);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(ratio, ratio); // draw in CSS pixels for crisp text on HiDPI
+        updateFont();
+      }
+
+      function randomizeVelocity(speed = baseSpeed) {
+        const dir = Math.random() * Math.PI * 2;
+        vx = speed * Math.cos(dir);
+        vy = speed * Math.sin(dir);
+        omega = (Math.random() < 0.5 ? -1 : 1) * (0.6 + Math.random() * 0.8);
+      }
+
+      function drawBackground() {
+        const g = ctx.createRadialGradient(width/2, height/2, 10, width/2, height/2, Math.max(width, height));
+        g.addColorStop(0, '#0b0e14');
+        g.addColorStop(1, '#05070b');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      function drawText() {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+
+        const grad = ctx.createLinearGradient(-halfW, -halfH, halfW, halfH);
+        grad.addColorStop(0, '#ff8bd1');
+        grad.addColorStop(0.5, '#7dd3fc');
+        grad.addColorStop(1, '#f9f871');
+
+        ctx.fillStyle = grad;
+        ctx.lineWidth = Math.max(2, fontSize * 0.06);
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.shadowColor = 'rgba(0,0,0,0.55)';
+        ctx.shadowBlur = 24;
+
+        ctx.fillText(text, 0, 0);
+        ctx.strokeText(text, 0, 0);
+        ctx.restore();
+      }
+
+      function step(dt) {
+        // move
+        x += vx * dt;
+        y += vy * dt;
+        angle += omega * dt;
+
+        // bounce off edges using bounding circle
+        if (x - radius <= 0 && vx < 0) { x = radius; vx = -vx; }
+        if (x + radius >= width && vx > 0) { x = width - radius; vx = -vx; }
+        if (y - radius <= 0 && vy < 0) { y = radius; vy = -vy; }
+        if (y + radius >= height && vy > 0) { y = height - radius; vy = -vy; }
+      }
+
+      function frame(t) {
+        const now = t;
+        let dt = (now - last) / 1000;
+        last = now;
+        dt = Math.max(0, Math.min(dt, 0.033)); // clamp delta to avoid jumps
+
+        drawBackground();
+        if (!paused) step(dt);
+        drawText();
+
+        requestAnimationFrame(frame);
+      }
+
+      // interactions
+      window.addEventListener('resize', () => {
+        const prevW = width, prevH = height;
+        resize();
+        // keep position proportionally after resize
+        if (prevW && prevH) {
+          x = x * (width / prevW);
+          y = y * (height / prevH);
+        } else {
+          x = width / 2; y = height / 2;
+        }
+      });
+
+      window.addEventListener('click', () => {
+        randomizeVelocity();
+      });
+      window.addEventListener('touchstart', () => {
+        randomizeVelocity();
+      }, { passive: true });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          paused = !paused;
+          if (!paused) last = performance.now();
+          e.preventDefault();
+        }
+      });
+
+      // init
+      resize();
+      x = width / 2;
+      y = height / 2;
+      randomizeVelocity();
+
+      // start loop
+      requestAnimationFrame((ts) => { last = ts; frame(ts); });
+    })();
+  </script>
 </body>
 </html>
